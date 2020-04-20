@@ -3,20 +3,24 @@
 #include<time.h>
 #include<unistd.h>
 #include<iomanip>
-
-#define VILLCNT 5
-#define STARVCNT 1
+#include<stdlib.h>
+#include<string.h>
 
 using namespace std;
 void* ATB(void*);
 void* BTA(void*);
-pthread_mutex_t mutex,atb,bta;
+
+pthread_mutex_t mutex,atb,bta,mutex1;
 time_t start;
+
 int atbcnt,btacnt;
 int atbcyc,btacyc;
+int onatb,onbta;
+int VILLCNT,STARVCNT;
 
-void display(int id,char *str="")
+void display(int id,string str="")
 {
+	pthread_mutex_lock(&mutex);
 	for(int i=0;i<VILLCNT;i++)
 	{ 
 		if(id==-1) cout<<setw(7)<<"Vill. "<<i+1<<'|';
@@ -27,23 +31,11 @@ void display(int id,char *str="")
 		}
 	}
 	cout<<time(NULL)-start<<"sec"<<endl;
-}
-
-void createvillagers(pthread_t vill,int *id)
-{
-	void* (*villgen)(void*);
-	srand(rand());
-	if(rand()%2)	//villager creation random village
-		villgen=&ATB;
-	else
-		villgen=&BTA;
-	sleep(rand()%4);	//Villager creation random time
-	pthread_create(&vill,NULL,villgen,(id));
+	pthread_mutex_unlock(&mutex);
 }
 
 void* ATB(void* id)
 {
-	int traveltime;
 	display(*(int*)id,"Appeared");
 	display(*(int*)id,"A to B");
 	display(*(int*)id,"Waiting");	
@@ -59,19 +51,25 @@ void* ATB(void* id)
 	else
 		::atbcyc=0;
 	pthread_mutex_unlock(&mutex);
-	traveltime=rand()%10;
 	display(*(int*)id,"Crossing");
-	sleep(traveltime);
+	
+	sleep((rand()%5)+2);
 	display(*(int*)id,"Crossed!");
 	pthread_mutex_lock(&mutex);
 	::atbcnt--;
 	if(::atbcnt==0)
 		pthread_mutex_unlock(&bta);
 	pthread_mutex_unlock(&mutex);
+	sleep(2);
+	if(!pthread_mutex_trylock(&bta))
+	{
+		pthread_mutex_unlock(&atb);
+		pthread_mutex_unlock(&bta);
+	}
+	pthread_exit(NULL);
 }
 void* BTA(void* id)
 {
-	int traveltime;
 	display(*(int*)id,"Appeared");
 	display(*(int*)id,"B to A");
 	display(*(int*)id,"Waiting");	
@@ -87,33 +85,94 @@ void* BTA(void* id)
 	else
 		::btacyc=0;
 	pthread_mutex_unlock(&mutex);
-	traveltime=rand()%10;
 	display(*(int*)id,"Crossing");
-	sleep(traveltime);
+	
+	sleep((rand()%5)+2);
+	
 	display(*(int*)id,"Crossed!");
 	pthread_mutex_lock(&mutex);
 	::btacnt--;
 	if(::btacnt==0)
 		pthread_mutex_unlock(&atb);
 	pthread_mutex_unlock(&mutex);
+	sleep(2);
+	if(!pthread_mutex_trylock(&atb))
+	{
+		pthread_mutex_unlock(&bta);
+		pthread_mutex_unlock(&atb);
+	}
+	pthread_exit(NULL);
 }
 
-int main()
+int main(int a, char *b[10])
 {
+    int m,n,STARVCNT=1;
+	::VILLCNT=(rand()%5)+4;
+    if(a==4)
+    {
+        m=atoi(b[1]);
+        n=atoi(b[2]);
+        ::STARVCNT=atoi(b[3]);
+		::VILLCNT=m+n;
+    }
+    else if(a==3)
+    {
+        m=atoi(b[1]);
+        n=atoi(b[2]);
+		::VILLCNT=m+n;
+    }
+    else if(a==2)
+        ::STARVCNT=atoi(b[1]);
+    else if(a>4)
+    {
+        cout<<"Invalid number of arguments\n";
+        exit(0);
+    }
+    
 	::start=time(NULL);
+    
 	pthread_t vill[VILLCNT];
 	::atbcnt=0;::btacnt=0;
 	::atbcyc=0;::btacyc=0;
+	
 	int id[VILLCNT];
+    	int t;
+	
 	pthread_mutex_init(&mutex,NULL);
 	pthread_mutex_init(&atb,NULL);
 	pthread_mutex_init(&bta,NULL);
+	pthread_mutex_init(&mutex1,NULL);
 	display(-1);
-	for(int i=0;i<VILLCNT;i++)
+	srand(time(NULL));
+    	for(int i=0;i<VILLCNT;i++)
 	{
-		id[i]=i+1;	
-		createvillagers(vill[i],&id[i]);
+        	void* (*villgen)(void*);
+        	id[i]=i+1;
+        
+        	t=rand()%2;
+	    	if(t==1 && m!=0)	//villager creation random village
+	    	{	
+            		villgen=&ATB;
+            		m--;
+        	}   
+	    	else if(t==0 && n!=0)
+        	{
+		    villgen=&BTA;
+            		n--;
+        	}	
+		else if(t==0 && m!=0)
+		{
+			    villgen=&ATB;
+		    m--;
+		}
+		else if(t==1 && n!=0)
+		{
+			    villgen=&BTA;
+		    n--;
+		}
+		    sleep(rand()%4);
+		    pthread_create(&vill[i],NULL,villgen,(&id[i]));
 	}
-	sleep(100);
+	pthread_exit(NULL);
 	return 0;
 }
